@@ -39,13 +39,14 @@ if (-not (Test-Path -LiteralPath $nestedSource -PathType Leaf)) {
     if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize the SDK dependencies.' }
 }
 
-& $git -C $sdk apply --check $patch 2>$null
-if ($LASTEXITCODE -eq 0) {
+. (Join-Path $PSScriptRoot 'sdk-patch.ps1')
+if (Test-SdkPatch -Git $git -Sdk $sdk -Patch $patch) {
     & $git -C $sdk apply $patch
     if ($LASTEXITCODE -ne 0) { throw 'Failed to apply the SDK patch.' }
 } else {
-    & $git -C $sdk apply --reverse --check $patch 2>$null
-    if ($LASTEXITCODE -ne 0) { throw 'The SDK source conflicts with patches/rexglue-sdk/sdk.patch.' }
+    if (-not (Test-SdkPatch -Git $git -Sdk $sdk -Patch $patch -Reverse)) {
+        throw 'The SDK source conflicts with patches/rexglue-sdk/sdk.patch. Inspect git -C references/rexglue-sdk status and diff; do not reset local edits blindly.'
+    }
 }
 
 # A release must contain precisely the renderer source represented by the
