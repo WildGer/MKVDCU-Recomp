@@ -1,46 +1,29 @@
 # Troubleshooting
 
-Logs: launcher **Settings → Open logs**, or `%LOCALAPPDATA%\MKVDCU-Recomp\user\logs`. Each game start writes a `play-*.log`. Attach the newest one when you [report a problem](https://github.com/KawaiiBunga/MKVDCU-Recomp/issues/new).
+## Game files not found
 
-## Setup
+The native startup error means `game/default.xex` is missing, unreadable, unsupported, or the required retail folders are absent. Copy the complete original retail release into `game/` beside `mkvsdcu.exe`. Do not use a title-updated XEX. See [Getting started](GETTING_STARTED.md) for the required SHA-256.
 
-**"Unsupported game version"**
-Only the original retail release works. If you dumped an installed copy with a title update applied, dump the disc instead. Demos, prototypes and other regions need their own port work.
+Check an optional adjacent `mkvsdcu.toml` for a `game_data_root` override. Relative paths are executable-relative, not relative to the shortcut's working directory. The hash checks the XEX revision, not all original assets.
 
-**"Game folder is incomplete" or "default.xex not found"**
-Choose the folder that has `default.xex` directly inside it, not its parent.
+## Missing DLL or graphics startup failure
 
-**Windows says "Windows protected your PC"**
-The launcher isn't code-signed yet. Click **More info → Run anyway**. See [Releasing](RELEASING.md#code-signing) for the plan.
+Keep every runtime DLL from the staged package next to `mkvsdcu.exe`, including `rexruntime.dll`, `rexgpu-xenos.dll`, and the build's FidelityFX/runtime dependencies. Use a supported graphics driver. No launcher or build tools should be needed to play. A Windows missing-DLL dialog happens before the game's own validation can run.
 
-**My antivirus flags or deletes the launcher**
-The launcher downloads build tools and starts compilers, which some antivirus heuristics dislike. Every download is checked against a SHA-256 published in the release, and Microsoft's installer is checked for Microsoft's signature before it runs. Compare the file's SHA-256 with `release.json` on the release page, then allow it in your antivirus or report it as a false positive ([Microsoft](https://www.microsoft.com/wdsi/filesubmission)).
+## Logs and settings
 
-**Microsoft's installer failed or was cancelled**
-Press **Install build tools** again. It can also be installed by hand: install [Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **MSVC v143 x64/x86 build tools** and a **Windows 11 SDK**, then reopen the launcher.
+The SDK writes game logs into `logs/` beside the executable by default. Developer `run-pc.ps1` writes its timestamped log under the build directory instead. Profiling logs use the user data directory's `logs/`. Check the newest log for startup or runtime failures.
 
-**The build failed**
-Open **Show build log**, scroll to the first `error`, and include the log in a report. Common causes:
-- Not enough disk space: the build needs about 3 GB free on the install drive.
-- Antivirus locking files mid-build: exclude `%LOCALAPPDATA%\MKVDCU-Recomp` and try **Settings → Rebuild game**.
-- Damaged compiler tools: **Settings → Reinstall build tools**.
+F1 is the main settings interface; F2 shows performance information. To reset settings, close the game and rename the adjacent `mkvsdcu.toml`. The former launcher-specific user config is no longer read.
 
-## Playing
+## Audio and input
 
-**The game closes on startup or during play**
-Check the newest `play-*.log`. A line with `Call to invalid or unregistered function` points to a gap in the port; please report it with the log.
+F1 → Audio: check Mute and Master; increase Buffer and restart for crackling. Connect the controller before launch; F1 → Controls shows what the existing input system sees.
 
-**Low frame rate or stutter**
-Press F2 for the overlay, then F1 → Performance. The line under the FPS says what is limiting it. Lowering **Render scale** helps a GPU-limited system. The first time new effects appear the game can hitch briefly while shaders compile; this happens once. Vulkan (F1 → Graphics) stutters until its cache fills; Direct3D 12 is recommended.
+## Mods
 
-**No sound, or crackling**
-F1 → Audio: check **Mute** and **Master**. For crackling, raise **Buffer** and restart the game.
+Set `port_mods = ""` in the adjacent TOML to disable all overlays. The default `mods/` folder mirrors the game's directory tree; a downloaded archive's `files/` contents belong there. For separately ordered mods, list their file roots in `port_mods`, separated by `|`, highest priority first. The game log records `Mod loaded` and can list replacements with `--log_level debug`.
 
-**Controller not working**
-Connect it before starting the game and press a button to wake it. F1 → Controls shows what the game sees.
+## Developer build failures
 
-**Reset the game's settings**
-Delete `mkvsdcu.toml` in `%LOCALAPPDATA%\MKVDCU-Recomp\user`. The game recreates it with defaults.
-
-**A mod breaks the game**
-Turn it off on the Mods page. The game log lists every mod it loaded (`Mod loaded: …`).
+See [PC build](PC_BUILD.md). Run scripts from Developer PowerShell with the required Clang, native Ninja, CMake, Microsoft headers/libraries, and pinned ReXGlue SDK. Build tools are developer prerequisites, not runtime dependencies. The legacy launcher installer and updater are not part of this fork's direct-launch instructions.

@@ -1,16 +1,17 @@
 # MKVDCU-Recomp
 
-An unofficial PC port of the Xbox 360 game **Mortal Kombat vs. DC Universe**, made by statically recompiling the game with [ReXGlue](https://github.com/rexglue/rexglue-sdk). You supply your own copy of the game; the launcher builds the PC version on your machine.
+An unofficial PC port of the Xbox 360 game **Mortal Kombat vs. DC Universe**, made by statically recompiling the game with [ReXGlue](https://github.com/rexglue/rexglue-sdk). This fork uses a direct-launch PC runtime: **`mkvsdcu.exe` is the game**. You supply your own original retail game files.
 
 ## Play
 
-1. Download `MKVDCU-Recomp.exe` from [Releases](https://github.com/KawaiiBunga/MKVDCU-Recomp/releases/latest) and run it.
-2. **Choose game folder**: the folder you copied the game to, with `default.xex` in it.
-3. **Install build tools**: a one-time download. Windows asks once for permission to run Microsoft's installer.
-4. **Build game**: 5 to 20 minutes the first time, much faster after updates.
-5. **Play.** In game, **F1** (or hold **Back + Start**) opens the settings menu and **F2** shows the performance overlay.
+1. Build and stage the PC port using [PC build](docs/PC_BUILD.md).
+2. Copy your complete original game files into `game/` beside the staged executable.
+3. Double-click **`mkvsdcu.exe`**. No launcher, updater, manifest, internet connection, or build tools are used to play.
+4. **F1** (or hold **Back + Start**) opens the in-game settings menu. **F2** shows the performance overlay.
 
-[Getting started](docs/GETTING_STARTED.md) covers each step in detail. If something goes wrong, see [Troubleshooting](docs/TROUBLESHOOTING.md). The launcher updates itself and the port, and has a **Mods** page ([making mods](docs/MODDING.md)).
+[Getting started](docs/GETTING_STARTED.md) describes the runtime layout and optional configuration. See [Troubleshooting](docs/TROUBLESHOOTING.md) and [Making mods](docs/MODDING.md).
+
+Direct-launch changes are undergoing validation; Windows gameplay checks are still required. The previous upstream gameplay results below do not validate this refactor.
 
 Only the original retail release is supported (SHA-256 of `default.xex`: `2955F2E2…48E5A7`). The project does not include or distribute any game files.
 
@@ -23,13 +24,14 @@ Tested on one PC: the game boots, plays full Arcade matches with a controller an
 | Path | What it is |
 | --- | --- |
 | `targets/mkvsdcu/private/rexglue-host/` | The PC host: CMake project, F1 menu, telemetry, mod loader, and the function list for the supported XEX |
-| `launcher/MKVDCU.Launcher/` | The Windows launcher (WPF, .NET 8) |
+| `launcher/MKVDCU.Launcher/` | Legacy upstream launcher, retained during direct-launch validation; not part of the staged runtime |
 | `scripts/` | Build and run from a checkout, benchmark, make releases |
 | `references/rexglue-sdk/` | Pinned SDK source submodule; port patches live in `patches/rexglue-sdk/` |
-| `mods/index.json` | The mod list the launcher offers |
+| `config/mkvsdcu.toml` | Optional direct-launch configuration template |
+| `mods/index.json` | Legacy launcher mod catalog; not used by the game |
 | `docs/` | Player guides, build notes, releasing |
 
-Build and run from a checkout with the steps in [PC build](docs/PC_BUILD.md). Release process: [Releasing](docs/RELEASING.md). Switch is a later target; `switch/toolchain-test/` only proves the libnx toolchain.
+Build and run from a checkout with the steps in [PC build](docs/PC_BUILD.md). `scripts/stage-pc.ps1` packages the direct-launch runtime. `scripts/release.ps1` remains the legacy launcher release workflow and is not used for this package. Switch is a later target; `switch/toolchain-test/` only proves the libnx toolchain.
 
 ## Like what I do?
 I love what I do and want to keep sharing it with the world. You can directly support me and my projects here: https://ko-fi.com/kawaiibunga

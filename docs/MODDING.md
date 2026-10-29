@@ -2,6 +2,20 @@
 
 A mod replaces or adds game files. The player's game folder is never changed: the port places the mod's files over the game's files in memory when the game starts, so turning a mod off is instant and safe.
 
+## Direct-launch installation
+
+The default overlay is `mods/` beside `mkvsdcu.exe`. For the archive below, copy the contents of `files/` into `mods/`, so `mods/Movies/WB_Logo.wmv` overrides `game/Movies/WB_Logo.wmv`. `mod.json` is legacy catalog metadata, not a runtime requirement.
+
+Alternatively, keep separate folders and set the adjacent `mkvsdcu.toml`:
+
+```toml
+port_mods = "mods/hd-intro/files|mods/another-mod/files"
+```
+
+Paths are executable-relative; the first listed overlay wins. Set `port_mods = ""` to disable all mods. Restart after changing overlays. No launcher state or catalog is consulted. Debug logs list replacement files with `--log_level debug`.
+
+The remaining archive/catalog instructions describe the retained legacy launcher format.
+
 ## Layout
 
 ```

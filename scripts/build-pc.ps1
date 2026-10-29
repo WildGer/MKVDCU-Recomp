@@ -45,7 +45,7 @@ $env:Path = (Split-Path -Parent $ninja) + ';' + $env:Path
 
 foreach ($tool in @('clang.exe', 'clang++.exe', 'ninja.exe')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        throw "Missing $tool. Install LLVM/Clang and Ninja, then relaunch. The launcher already includes ReXGlue."
+        throw "Missing $tool. Install LLVM/Clang and native Ninja, then reopen Developer PowerShell. See docs/PC_BUILD.md."
     }
 }
 

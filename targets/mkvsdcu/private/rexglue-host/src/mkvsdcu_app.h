@@ -30,6 +30,7 @@ class MkvsdcuApp : public rex::ReXApp {
   }
 
  protected:
+  bool SetupEnvironment() override;
   void OnConfigurePaths(rex::PathConfig& paths) override;
   void OnPreSetup(rex::RuntimeConfig& config) override;
   void OnPostLoadXexImage() override;

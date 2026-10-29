@@ -25,6 +25,8 @@ include(generated/rexglue.cmake)
 # Sources
 set(MKVSDCU_SOURCES
     src/main.cpp
+    src/direct_launch.cpp
+    src/direct_launch_win.cpp
     src/mkvsdcu_app.cpp
     src/port_menu/port_menu.cpp
     src/port_menu/port_config.cpp
@@ -59,8 +61,8 @@ endif()
 rexglue_setup_target(mkvsdcu GPU_PLUGINS xenos)
 
 if(WIN32)
-    # Performance overlay: GPU engine counters and video memory queries.
-    target_link_libraries(mkvsdcu PRIVATE pdh dxgi winmm dbghelp)
+    # Performance overlay, plus Windows CNG for retail XEX SHA-256 validation.
+    target_link_libraries(mkvsdcu PRIVATE pdh dxgi winmm dbghelp bcrypt)
 
     # rexglue_setup_target copies the FidelityFX DLLs only for in-tree target
     # names; an installed SDK exports them as rex::amd_fidelityfx_*, so the

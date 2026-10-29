@@ -10,7 +10,8 @@ class VirtualFileSystem;
 
 // File-replacement mods. Each mod folder mirrors the game folder; a file in a
 // mod wins over the game's own file (and over mods listed after it). The
-// launcher passes enabled mods as --port_mods="<dir>|<dir>", highest first.
+// default overlay is exe-relative mods/. port_mods="<dir>|<dir>" selects
+// multiple folders, highest first; relative folders belong to the executable.
 namespace mod_overlay {
 
 // Parses the port_mods cvar; missing folders are skipped.

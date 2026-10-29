@@ -18,7 +18,7 @@
 #include <rex/cvar.h>
 
 namespace {
-// Written by the launcher for every session; persisting it only goes stale.
+// A per-session log destination should not become a persistent setting.
 constexpr const char* kSessionKeys[] = {"log_file"};
 
 std::optional<toml::table> ParseToml(std::string_view text, std::string* error = nullptr) {

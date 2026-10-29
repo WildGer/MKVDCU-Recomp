@@ -10,8 +10,9 @@
 #include <rex/filesystem/vfs.h>
 #include <rex/logging.h>
 #include <rex/string/utf8.h>
+#include "../direct_launch.h"
 
-REXCVAR_DEFINE_STRING(port_mods, "", "Port/Mods",
+REXCVAR_DEFINE_STRING(port_mods, "mods", "Port/Mods",
                       "Mod folders layered over the game data, highest priority first, "
                       "separated by |");
 
@@ -90,21 +91,14 @@ size_t Merge(Entry* game_dir, const std::filesystem::path& mod_dir) {
 
 std::vector<std::filesystem::path> EnabledMods() {
   std::vector<std::filesystem::path> mods;
-  const std::string list = REXCVAR_GET(port_mods);
-  size_t start = 0;
-  while (start <= list.size()) {
-    const size_t end = std::min(list.find('|', start), list.size());
-    const std::string item = list.substr(start, end - start);
-    if (!item.empty()) {
-      std::error_code error;
-      const auto path = rex::to_path(item);
-      if (std::filesystem::is_directory(path, error)) {
-        mods.push_back(path);
-      } else {
-        REXLOG_WARN("Mod folder not found, skipped: {}", item);
-      }
+  for (const auto& path : direct_launch::ModDirectories(
+           rex::filesystem::GetExecutableFolder(), REXCVAR_GET(port_mods))) {
+    std::error_code error;
+    if (std::filesystem::is_directory(path, error)) {
+      mods.push_back(path);
+    } else if (rex::cvar::GetFlagSource("port_mods") != rex::cvar::Source::kDefault) {
+      REXLOG_WARN("Mod folder not found, skipped: {}", rex::path_to_utf8(path));
     }
-    start = end + 1;
   }
   return mods;
 }

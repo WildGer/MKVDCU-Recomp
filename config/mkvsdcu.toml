@@ -1,0 +1,9 @@
+# Optional direct-launch settings. The F1 menu saves changes to this file.
+# Relative paths are resolved beside mkvsdcu.exe, regardless of working directory.
+game_data_root = "game"
+port_mods = "mods"
+
+# To disable all mods: port_mods = ""
+# For multiple overlays (first wins): port_mods = "mods/first/files|mods/second/files"
+# The default mods/ folder itself mirrors the original game's directory tree.
+# Leave GPU/audio/input settings at their internal defaults or use F1 in game.

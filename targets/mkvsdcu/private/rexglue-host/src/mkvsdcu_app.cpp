@@ -11,6 +11,7 @@
 #include <Windows.h>
 
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/graphics/command_processor.h>
 #include <rex/graphics/graphics_system.h>
 #include <rex/input/input_system.h>
@@ -18,6 +19,7 @@
 #include <rex/system/xmemory.h>
 #include <rex/ui/keybinds.h>
 
+#include "direct_launch.h"
 #include "host_tweaks.h"
 #include "input/controller_filter.h"
 #include "mods/mod_overlay.h"
@@ -26,13 +28,53 @@
 #include "telemetry/perf_overlay.h"
 #include "telemetry/system_telemetry.h"
 
-REXCVAR_DEFINE_STRING(port_version, "dev", "Port", "Port release shown in the menu (set by the launcher)");
+REXCVAR_DEFINE_STRING(port_version, "dev", "Port", "Port release shown in the menu");
 
 MkvsdcuApp::~MkvsdcuApp() = default;
 
+bool MkvsdcuApp::SetupEnvironment() {
+  // The SDK computes runtime paths before loading TOML. Load the adjacent
+  // file first so path settings participate, retaining CLI/environment priority.
+  const auto executable_dir = rex::filesystem::GetExecutableFolder();
+  if (executable_dir.empty()) {
+    MessageBoxW(nullptr, L"Could not locate the game executable directory.",
+                L"Mortal Kombat vs. DC Universe", MB_OK | MB_ICONERROR);
+    return false;
+  }
+  const auto config = executable_dir / "mkvsdcu.toml";
+  RepairPortConfig(config);
+  std::error_code error;
+  if (std::filesystem::is_regular_file(config, error)) rex::cvar::LoadConfig(config);
+
+  const auto game_dir = direct_launch::GameDirectory(
+      executable_dir, rex::cvar::GetFlagByName("game_data_root"));
+  if (direct_launch::ValidateGameDirectory(game_dir) != direct_launch::GameFiles::kSupported) {
+    const auto message = L"Supported Mortal Kombat vs. DC Universe game files were not found in " +
+                         game_dir.wstring() + L".\n\nUse the complete original retail game files.";
+    MessageBoxW(nullptr, message.c_str(), L"Mortal Kombat vs. DC Universe", MB_OK | MB_ICONERROR);
+    return false;  // Normal SDK teardown, before window/GPU/runtime construction.
+  }
+  // Previously supplied by the launcher/run script; keep the existing backend
+  // selection and all renderer-specific defaults in OnPreSetup unchanged.
+  if (rex::cvar::GetFlagSource("gpu_plugin") == rex::cvar::Source::kDefault) {
+    rex::cvar::SetFlagByName("gpu_plugin", "xenos");
+  }
+  return rex::ReXApp::SetupEnvironment();
+}
+
 void MkvsdcuApp::OnConfigurePaths(rex::PathConfig& paths) {
-  paths.config_path = paths.user_data_root / "mkvsdcu.toml";
-  RepairPortConfig(paths.config_path);
+  const auto executable_dir = rex::filesystem::GetExecutableFolder();
+  paths.game_data_root = direct_launch::GameDirectory(
+      executable_dir, rex::cvar::GetFlagByName("game_data_root"));
+  paths.user_data_root = direct_launch::ResolvePath(executable_dir, paths.user_data_root);
+  paths.cache_root = direct_launch::ResolvePath(executable_dir, paths.cache_root);
+  if (!paths.update_data_root.empty()) {
+    paths.update_data_root = direct_launch::ResolvePath(executable_dir, paths.update_data_root);
+  }
+  if (!paths.metadata_root.empty()) {
+    paths.metadata_root = direct_launch::ResolvePath(executable_dir, paths.metadata_root);
+  }
+  paths.config_path = executable_dir / "mkvsdcu.toml";
   host_.config_path = paths.config_path;
   host_.log_dir = paths.user_data_root / "logs";
 }
