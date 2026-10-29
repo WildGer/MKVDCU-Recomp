@@ -74,21 +74,33 @@ foreach ($tool in @('clang.exe', 'clang++.exe', 'ninja.exe', 'llvm-rc.exe')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Missing $tool. See docs/PC_BUILD.md." }
 }
 
+# CMake writes compiler/tool paths into generated .cmake files. Native
+# Windows backslashes can be parsed there as escape sequences (for example
+# C:\Program Files -> \P), so pass CMake-style forward-slash paths.
+$sdkCmake = $sdk.Replace('\', '/')
+$buildDirCmake = $BuildDir.Replace('\', '/')
+$clang = ((Get-Command clang.exe).Source).Replace('\', '/')
+$clangxx = ((Get-Command clang++.exe).Source).Replace('\', '/')
+$llvmrc = ((Get-Command llvm-rc.exe).Source).Replace('\', '/')
+$ninjaCmake = $ninja.Replace('\', '/')
+$installCmake = $install.Replace('\', '/')
+
 # Use a fresh single-config Release cache: moved SDK caches may contain
 # MSYS compiler/SDL settings even when the renderer was requested as Vulkan.
-$configureArgs = @('-S', $sdk, '-B', $BuildDir, '-G', 'Ninja',
-    "-DCMAKE_C_COMPILER=$((Get-Command clang.exe).Source)",
-    "-DCMAKE_CXX_COMPILER=$((Get-Command clang++.exe).Source)",
-    "-DCMAKE_RC_COMPILER=$((Get-Command llvm-rc.exe).Source)",
-    "-DCMAKE_MAKE_PROGRAM=$ninja",
+$configureArgs = @('-S', $sdkCmake, '-B', $buildDirCmake, '-G', 'Ninja',
+    "-DCMAKE_C_COMPILER=$clang",
+    "-DCMAKE_CXX_COMPILER=$clangxx",
+    "-DCMAKE_RC_COMPILER=$llvmrc",
+    "-DCMAKE_MAKE_PROGRAM=$ninjaCmake",
     '-DCMAKE_C_FLAGS=-march=x86-64-v2', '-DCMAKE_CXX_FLAGS=-march=x86-64-v2',
-    '-DCMAKE_BUILD_TYPE=Release', "-DCMAKE_INSTALL_PREFIX=$install",
+    '-DCMAKE_BUILD_TYPE=Release', "-DCMAKE_INSTALL_PREFIX=$installCmake",
     '-DREXGLUE_USE_VULKAN=ON', '-DREXGLUE_USE_D3D12=ON',
     '-DREXGLUE_ENABLE_FIDELITYFX=ON', '-DREXGLUE_ENABLE_TRACY=ON',
     '-DREXGLUE_ENABLE_PERF_COUNTERS=ON')
 $existingFidelityFx = Join-Path $sdk 'out\build\win-amd64\_deps\fidelityfx-src'
 if (Test-Path -LiteralPath (Join-Path $existingFidelityFx 'CMakeLists.txt')) {
-    $configureArgs += "-DFETCHCONTENT_SOURCE_DIR_FIDELITYFX=$existingFidelityFx"
+    $existingFidelityFxCmake = $existingFidelityFx.Replace('\', '/')
+    $configureArgs += "-DFETCHCONTENT_SOURCE_DIR_FIDELITYFX=$existingFidelityFxCmake"
 }
 & $cmake @configureArgs
 if ($LASTEXITCODE -ne 0) { throw "SDK configure failed with exit code $LASTEXITCODE" }
