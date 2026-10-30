@@ -17,3 +17,11 @@ xer_as_local = true
 reserved_as_local = true
 cr_as_local = true
 non_argument_as_local = false
+
+# The render thread polls the Xenos command-ring read pointer in sub_827F60C0.
+# 0x827F6150 is reached only after the free-space check fails, immediately
+# before sub_827E1410 performs the guest wait/watchdog work. Keep this hook
+# side-effect-only so guest control flow and watchdog semantics stay intact.
+[[midasm_hook]]
+address = 0x827F6150
+name = "mkvsdcu_command_ring_backoff"
