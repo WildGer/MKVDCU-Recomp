@@ -87,20 +87,18 @@ std::vector<PerfHint> DiagnosePerformance(const telemetry::FrameStats& frames,
     return hints;
   }
   const double target = TargetFps(system);
-  const telemetry::ThreadLoad* busiest =
-      system.busiest_threads.empty() ? nullptr : &system.busiest_threads.front();
 
   if (frames.fps < target * 0.95) {
     if (system.gpu_3d_percent >= 90) {
       std::snprintf(text, sizeof(text), "GPU-limited (%.0f%% busy). Lower the render scale.",
                     system.gpu_3d_percent);
       hints.push_back({true, text});
-    } else if (busiest && busiest->core_percent >= 90) {
-      std::snprintf(text, sizeof(text), "Possibly CPU-limited: %s at %.0f%% of a core.",
-                    busiest->name.c_str(), busiest->core_percent);
-      hints.push_back({true, text});
+    } else if (frames.hitches > 0) {
+      hints.push_back({true, "Below target from long frames: loading or new shaders."});
     } else {
-      hints.push_back({true, "Below target with headroom: loading, shaders or a movie."});
+      // Guest threads poll while they wait, so a thread near 100% of a core
+      // is not evidence of a CPU limit. Only the profiler can separate the two.
+      hints.push_back({true, "Below target, GPU has headroom: a movie, or run the CPU profiler."});
     }
   }
   if (frames.hitches > 0) {
