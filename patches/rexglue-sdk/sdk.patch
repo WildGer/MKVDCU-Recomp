@@ -203,6 +203,72 @@ index a744375..1bd2aa6 100644
    IssueSwap(frontbuffer_ptr, frontbuffer_width, frontbuffer_height);
  
    ++counter_;
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+index 19874a5..68df6b4 100644
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -2398,8 +2398,11 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
+           bound_depth_and_color_render_target_formats, &pipeline_handle, &root_signature)) {
+     return false;
+   }
+-  if (REXCVAR_GET(async_shader_compilation) &&
+-      pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
++  // Skip the draw while its pipeline is pending (async compilation) or failed.
++  // Checked even with async compilation off, in case it was turned off while a
++  // queued pipeline was still pending: PipelineCache::EndSubmission no longer
++  // waits for those in async mode.
++  if (pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
+     return true;
+   }
+ 
+diff --git a/src/graphics/d3d12/pipeline_cache.cpp b/src/graphics/d3d12/pipeline_cache.cpp
+index 8e6b854..8a1975f 100644
+--- a/src/graphics/d3d12/pipeline_cache.cpp
++++ b/src/graphics/d3d12/pipeline_cache.cpp
+@@ -532,7 +532,7 @@ void PipelineCache::InitializeShaderStorage(const std::filesystem::path& cache_r
+     size_t creation_thread_needed_count =
+         std::max(std::min(pipeline_stored_descriptions.size(), logical_processor_count) - size_t(1),
+                  creation_thread_original_count);
+-    while (creation_threads_.size() < creation_thread_original_count) {
++    while (creation_threads_.size() < creation_thread_needed_count) {
+       size_t creation_thread_index = creation_threads_.size();
+       std::unique_ptr<rex::thread::Thread> creation_thread = rex::thread::Thread::Create(
+           {}, [this, creation_thread_index]() { CreationThread(creation_thread_index); });
+@@ -762,7 +762,11 @@ void PipelineCache::EndSubmission() {
+     shader_storage_file_flush_needed_ = false;
+     pipeline_storage_file_flush_needed_ = false;
+   }
+-  if (!creation_threads_.empty()) {
++  // With async compilation, draws whose pipeline is not ready yet are skipped
++  // (D3D12CommandProcessor::IssueDraw), so the submission never references a
++  // pending pipeline. Draining and awaiting the queue here only stalled the
++  // frame on every burst of new shaders.
++  if (!creation_threads_.empty() && !REXCVAR_GET(async_shader_compilation)) {
+     CreateQueuedPipelinesOnProcessorThread();
+     // Await creation of all queued pipelines.
+     bool await_creation_completion_event;
+@@ -909,9 +913,6 @@ bool PipelineCache::ConfigurePipeline(
+   assert_not_null(pipeline_handle_out);
+   assert_not_null(root_signature_out);
+ 
+-  bool use_async = REXCVAR_GET(async_shader_compilation) && !creation_threads_.empty() &&
+-                   pixel_shader != nullptr;
+-
+   // Ensure shaders are translated - needed now for GetCurrentStateDescription.
+   // Edge flags are not supported yet (because polygon primitives are not).
+   assert_true(register_file_.Get<reg::SQ_PROGRAM_CNTL>().vs_export_mode !=
+@@ -925,6 +926,11 @@ bool PipelineCache::ConfigurePipeline(
+   if (!vertex_shader->shader().is_ucode_analyzed()) {
+     vertex_shader->shader().AnalyzeUcode(ucode_disasm_buffer_);
+   }
++  // Depth-only draws (shadow maps, prepasses) can be skipped for a few frames
++  // like any other draw. A vertex shader that memexports cannot: skipping it
++  // would lose the memory it writes.
++  bool use_async = REXCVAR_GET(async_shader_compilation) && !creation_threads_.empty() &&
++                   (pixel_shader != nullptr || !vertex_shader->shader().memexport_eM_written());
+   if (!vertex_shader->is_translated() && !use_async) {
+     std::lock_guard<std::mutex> lock(translation_request_lock_);
+     if (!vertex_shader->is_translated()) {
 diff --git a/src/graphics/pipeline/shader/spirv_translator_fetch.cpp b/src/graphics/pipeline/shader/spirv_translator_fetch.cpp
 index 9ce3bb4..28f2170 100644
 --- a/src/graphics/pipeline/shader/spirv_translator_fetch.cpp
