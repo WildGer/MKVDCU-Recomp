@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <ctime>
 #include <fstream>
 #include <map>
@@ -49,6 +50,22 @@ std::string ThreadName(HANDLE thread) {
   return name;
 }
 
+// WAIT_REG_MEM target: "mem:0x..." or "reg:0x...".
+std::string WaitTargetField(uint32_t target) {
+  char text[24];
+  std::snprintf(text, sizeof(text), "%s:0x%X", target & 0x80000000u ? "mem" : "reg",
+                target & 0x7FFFFFFFu);
+  return text;
+}
+
+// WAIT_REG_MEM compare, e.g. "f5 ref:0x12 mask:0xFFFFFFFF val:0x11 int:0x100".
+std::string WaitDetailField(const telemetry::SystemSnapshot& s) {
+  char text[96];
+  std::snprintf(text, sizeof(text), "f%u ref:0x%X mask:0x%X val:0x%X int:0x%X",
+                s.wait_function & 7u, s.wait_ref, s.wait_mask, s.wait_value, s.wait_interval);
+  return text;
+}
+
 std::string CsvField(std::string text) {
   if (text.find_first_of(",\"") == std::string::npos) return text;
   std::string quoted = "\"";
@@ -65,6 +82,7 @@ struct SystemSampler::Impl {
   uint64_t last_page_faults = 0;
   uint32_t last_vblank = 0;
   uint64_t last_swaps = 0;
+  GpuCounters last_gpu;
   bool primed = false;
 
   struct ThreadRecord {
@@ -233,7 +251,8 @@ struct SystemSampler::Impl {
     out.busiest_threads = std::move(loads);
   }
 
-  SystemSnapshot Sample(uint32_t vblank) {
+  SystemSnapshot Sample(const GpuCounters& gpu) {
+    const uint32_t vblank = gpu.vblank;
     SystemSnapshot out;
     const uint64_t swaps = GuestFrameCount();
     const auto now = std::chrono::steady_clock::now();
@@ -272,6 +291,21 @@ struct SystemSampler::Impl {
       // The SDK's counter also ticks once per swap; remove those.
       const double ticks = double(uint32_t(vblank - last_vblank)) - double(swaps - last_swaps);
       out.vblank_hz = std::max(0.0, ticks) / elapsed;
+      if (const uint64_t frames = gpu.swap_samples - last_gpu.swap_samples) {
+        out.swap_queue_ms = double(gpu.swap_queue_us - last_gpu.swap_queue_us) / frames / 1000.0;
+        out.swap_pacing_ms = double(gpu.swap_pacing_us - last_gpu.swap_pacing_us) / frames / 1000.0;
+        out.gpu_idle_ms = double(gpu.gpu_idle_us - last_gpu.gpu_idle_us) / frames / 1000.0;
+        out.wait_reg_mem_ms = double(gpu.wait_reg_mem_us - last_gpu.wait_reg_mem_us) / frames / 1000.0;
+        if (const uint64_t calls = gpu.backlog_samples - last_gpu.backlog_samples) {
+          out.frames_in_flight = double(gpu.backlog - last_gpu.backlog) / calls;
+        }
+      }
+      out.wait_target = gpu.wait_target;
+      out.wait_function = gpu.wait_function;
+      out.wait_ref = gpu.wait_ref;
+      out.wait_mask = gpu.wait_mask;
+      out.wait_value = gpu.wait_value;
+      out.wait_interval = gpu.wait_interval;
       out.valid = true;
     }
     last_time = now;
@@ -280,6 +314,7 @@ struct SystemSampler::Impl {
     last_system_total = system_total;
     last_page_faults = memory.PageFaultCount;
     last_vblank = vblank;
+    last_gpu = gpu;
     last_swaps = swaps;
     primed = true;
     return out;
@@ -299,13 +334,15 @@ struct SystemSampler::Impl {
         << top.core_percent << ',' << s.gpu_3d_percent << ',' << s.gpu_3d_total_percent << ','
         << s.vram_used_bytes / 1048576 << ',' << s.vram_budget_bytes / 1048576 << ','
         << s.working_set_bytes / 1048576 << ',' << s.private_bytes / 1048576 << ',' << s.vblank_hz
-        << '\n';
+        << ',' << s.swap_queue_ms << ',' << s.swap_pacing_ms << ',' << s.gpu_idle_ms << ','
+        << s.wait_reg_mem_ms << ',' << WaitTargetField(s.wait_target) << ','
+        << WaitDetailField(s) << ',' << s.frames_in_flight << '\n';
     csv.flush();
   }
 };
 
-SystemSampler::SystemSampler(std::function<uint32_t()> vblank_counter)
-    : impl_(std::make_unique<Impl>()), vblank_counter_(std::move(vblank_counter)) {
+SystemSampler::SystemSampler(std::function<GpuCounters()> gpu_counters)
+    : impl_(std::make_unique<Impl>()), gpu_counters_(std::move(gpu_counters)) {
   thread_ = std::thread([this] { Run(); });
 }
 
@@ -353,7 +390,7 @@ std::filesystem::path SystemSampler::SetCsvLogging(bool enabled,
         impl_->csv << "seconds,game_fps,frame_avg_ms,frame_p99_ms,frame_max_ms,frame_stddev_ms,"
                       "hitches,output_width,output_height,process_cpu_pct,system_cpu_pct,"
                       "busiest_thread,busiest_thread_core_pct,gpu_3d_pct,gpu_3d_total_pct,"
-                      "vram_used_mb,vram_budget_mb,working_set_mb,private_mb,vblank_hz\n";
+                      "vram_used_mb,vram_budget_mb,working_set_mb,private_mb,vblank_hz,swap_queue_ms,swap_pacing_ms,gpu_idle_ms,wait_reg_mem_ms,wait_target,wait_detail,frames_in_flight\n";
         impl_->csv_start = std::chrono::steady_clock::now();
       } else {
         impl_->csv_file.clear();
@@ -380,8 +417,8 @@ void SystemSampler::Run() {
       continue;
     }
     lock.unlock();
-    const uint32_t vblank = vblank_counter_ ? vblank_counter_() : 0;
-    SystemSnapshot snapshot = impl_->Sample(vblank);
+    const GpuCounters gpu = gpu_counters_ ? gpu_counters_() : GpuCounters{};
+    SystemSnapshot snapshot = impl_->Sample(gpu);
     impl_->WriteCsv(snapshot);
     lock.lock();
     if (snapshot.valid || !latest_.valid) latest_ = std::move(snapshot);

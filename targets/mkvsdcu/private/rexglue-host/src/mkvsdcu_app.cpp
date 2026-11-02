@@ -188,10 +188,27 @@ void MkvsdcuApp::OnPostSetup() {
     });
   }
 #endif
-  sampler_ = std::make_unique<telemetry::SystemSampler>([this]() -> uint32_t {
+  sampler_ = std::make_unique<telemetry::SystemSampler>([this] {
+    telemetry::GpuCounters counters;
     auto* graphics = static_cast<rex::graphics::GraphicsSystem*>(runtime()->graphics_system());
-    auto* processor = graphics ? graphics->command_processor() : nullptr;
-    return processor ? processor->counter() : 0;
+    if (auto* processor = graphics ? graphics->command_processor() : nullptr) {
+      const auto latency = processor->swap_latency_totals();
+      counters.vblank = processor->counter();
+      counters.swap_samples = latency.samples;
+      counters.swap_queue_us = latency.queue_us;
+      counters.swap_pacing_us = latency.pacing_us;
+      counters.gpu_idle_us = latency.idle_us;
+      counters.wait_reg_mem_us = latency.wait_reg_mem_us;
+      counters.backlog = latency.vd_swap_backlog;
+      counters.backlog_samples = latency.vd_swap_backlog_samples;
+      counters.wait_target = latency.last_wait_target;
+      counters.wait_function = latency.last_wait_info;
+      counters.wait_ref = latency.last_wait_ref;
+      counters.wait_mask = latency.last_wait_mask;
+      counters.wait_value = latency.last_wait_value;
+      counters.wait_interval = latency.last_wait_interval;
+    }
+    return counters;
   });
   host_.sampler = sampler_.get();
   host_.profiler = &profiler_;

@@ -43,12 +43,35 @@ struct SystemSnapshot {
   uint64_t shared_used_bytes = 0;
 
   double vblank_hz = 0;  // guest vertical blank interrupts per second
+
+  // Average per presented frame over the last second; -1 when unavailable.
+  double swap_queue_ms = -1;   // guest VdSwap until the swap is issued
+  double swap_pacing_ms = -1;  // part of that in the frame rate limiter
+  double gpu_idle_ms = -1;      // GPU worker waiting for guest commands
+  double wait_reg_mem_ms = -1;  // GPU worker blocked in PM4_WAIT_REG_MEM
+  double frames_in_flight = -1; // guest swaps not yet issued, averaged at VdSwap
+  uint32_t wait_target = 0;     // last WAIT_REG_MEM target; bit 31 = memory
+  // Last WAIT_REG_MEM compare: function, reference, mask, value read, interval.
+  uint32_t wait_function = 0, wait_ref = 0, wait_mask = 0, wait_value = 0, wait_interval = 0;
+};
+
+// Counters read from the guest GPU each sample. Totals since startup.
+struct GpuCounters {
+  uint32_t vblank = 0;
+  uint64_t swap_samples = 0;
+  uint64_t swap_queue_us = 0;
+  uint64_t swap_pacing_us = 0;
+  uint64_t gpu_idle_us = 0;
+  uint64_t wait_reg_mem_us = 0;
+  uint64_t backlog = 0, backlog_samples = 0;
+  uint32_t wait_target = 0;
+  uint32_t wait_function = 0, wait_ref = 0, wait_mask = 0, wait_value = 0, wait_interval = 0;
 };
 
 class SystemSampler {
  public:
-  // `vblank_counter` returns the guest GPU's vblank count; may be empty.
-  explicit SystemSampler(std::function<uint32_t()> vblank_counter);
+  // `gpu_counters` reads the guest GPU's counters; may be empty.
+  explicit SystemSampler(std::function<GpuCounters()> gpu_counters);
   ~SystemSampler();
 
   // Sampling runs while at least one reason is active.
@@ -64,7 +87,7 @@ class SystemSampler {
   void Run();
 
   std::unique_ptr<Impl> impl_;
-  std::function<uint32_t()> vblank_counter_;
+  std::function<GpuCounters()> gpu_counters_;
   mutable std::mutex mutex_;
   std::condition_variable wake_;
   std::vector<std::string> reasons_;

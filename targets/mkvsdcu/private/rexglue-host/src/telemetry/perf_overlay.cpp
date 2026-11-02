@@ -265,6 +265,19 @@ void PerfOverlay::DrawDetailed(ImGuiIO& io, const telemetry::FrameStats& frames,
   ImGui::Text("%.1f Hz", system.vblank_hz);
   ImGui::SameLine();
   ImGui::TextColored(kLabel, "window repaint %.0f Hz", io.Framerate);
+  if (system.swap_queue_ms >= 0) {
+    Label("Swap wait");
+    ImGui::Text("%.1f ms", system.swap_queue_ms);
+    ImGui::SameLine();
+    ImGui::TextColored(kLabel, "frame limiter %.1f ms (game frame to display queue)",
+                       system.swap_pacing_ms);
+    Label("GPU thread");
+    ImGui::Text("idle %.1f ms   waiting %.1f ms per frame", system.gpu_idle_ms,
+                system.wait_reg_mem_ms);
+    ImGui::SameLine();
+    ImGui::TextColored(kLabel, "on %s 0x%X", system.wait_target & 0x80000000u ? "mem" : "reg",
+                       system.wait_target & 0x7FFFFFFFu);
+  }
   telemetry::RecentFrameTimes(frame_times_, 240);
   DrawFrameTimeGraph(frame_times_, 400.0f, 54.0f);
   ImGui::TextColored(kLabel, "last 240 frames   lines: 16.7 ms (60 FPS), 33.3 ms (30 FPS)");

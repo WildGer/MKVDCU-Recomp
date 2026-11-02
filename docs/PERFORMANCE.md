@@ -146,6 +146,36 @@ than a controlled speedup estimate.
 - The SDK's `CommandProcessor::counter()` rises on every vblank *and* every
   swap; the overlay subtracts swaps to report the true vblank rate.
 
+## Input latency investigation (2026-11-02)
+
+Measured on a Ryzen 7 5700X3D / RTX 5070 at 2560x1440 165 Hz, in Arcade
+fights, with the telemetry now in the CSV (`swap_queue_ms`, `swap_pacing_ms`,
+`gpu_idle_ms`, `wait_reg_mem_ms`, `wait_target`, `wait_detail`,
+`frames_in_flight`) and the F2 Details "Swap wait" / "GPU thread" lines.
+
+- **The frame limiter adds no latency.** `gpu_frame_rate_limit=60` never
+  sleeps (`swap_pacing_ms` 0); the game is already paced by its own vblank
+  wait. With the limit at 0 the round clock stays correct.
+- **The GPU worker is never idle.** It spends 13-16 ms of every frame in
+  `PM4_WAIT_REG_MEM` on one memory word (`mem:0x1FCA3006`, compare "equal to
+  0", value 1 while waiting). The guest releases it each vblank. This wait is
+  the game's clock: treating it as satisfied (a removed experiment) ran the
+  game at ~177 FPS and too fast.
+- **The game does not queue frames.** `frames_in_flight` is 1 at every
+  `VdSwap`: the worker has issued the previous swap when the next is
+  submitted. Bounding the queue at `VdSwap` (a removed experiment) never
+  waited and changed nothing.
+- **Unresolved:** `swap_queue_ms` (host tick written into the swap packet at
+  `VdSwap`, compared when the worker issues it) reads ~31 ms, which is not
+  consistent with one frame in flight at 60 FPS. Both ends use the same QPC
+  clock. A per-frame trace of `VdSwap` and issue times is needed before
+  relying on that figure.
+
+Remaining input latency looks structural: the game samples, renders and then
+waits for the vblank like on the console. Lowering it further would mean
+changing when the game reads input relative to the vblank, which is engine
+work.
+
 ## Leads and fixes
 
 Status: **done** (in the port), **measure** (implemented as an option, needs a
