@@ -133,6 +133,41 @@ presentation cost; it does not reduce internal render pixels. An unlocked
 attract scenes did not align across runs, so this is a smoke result rather
 than a controlled speedup estimate.
 
+## GPU option A/B at 2x (2026-11-03)
+
+RTX 5070, fullscreen 2560x1440, full 2x internal scale (2560x1440), D3D12.
+At the locked 60 FPS the GPU is ~25% busy in the attract loop, and the F2
+overlay changes nothing (25.4% on, 25.2% off): with vsync the presenter's
+continuous repaint stops at the monitor rate and its composite is cheap.
+
+Unlocked (`--no-vsync`) the attract loop is GPU-bound (~97%). 75 s runs, one
+option changed per run, GPU-bound seconds after the intros, demo fights and
+title screen averaged separately because the fights differ between runs:
+
+| Run | Demo fights FPS | Title FPS |
+| --- | ---: | ---: |
+| Defaults, run 1 | 160.8 | 272.1 |
+| Defaults, run 2 | 159.8 | 272.4 |
+| `native_2x_msaa=false` | 139.7 | 250.5 |
+| `gamma_render_target_as_unorm16=false` | 161.5 | 271.2 |
+| `texture_cache_memory_limit_render_to_texture=128` | 158.3 | 266.6 |
+| `clear_memory_page_state=false` | 166.8 | 269.3 |
+| `occlusion_query_enable=false` | 159.8 | 267.1 |
+| `d3d12_submit_on_primary_buffer_end=false` | 168.4 | 267.6 |
+
+The defaults are the fastest or tied. Without native 2x MSAA the SDK emulates
+the game's 2x MSAA more expensively (-13% in fights). The +4-5% fight results
+for page state and submission are within the run-to-run spread of different
+demo fights and lose 1-2% on the title screen; neither is worth its accuracy
+risk. Remaining GPU cost is the game's own rendering at the chosen scale.
+
+Raising the texture cache limits does not change the load hitches. Locked
+60 FPS, 180 s attract runs alternating defaults (soft 384 / hard 768 MB) and
+2048 / 4096 MB: 14 vs 14 and 11 vs 9 hitches, worst frames 93 / 94 and
+67 / 75 ms, peak VRAM 1525 vs 1544 MB. The cache stays under the default
+limits, so nothing was being evicted; the hitches are first-time loads of the
+next fight's assets.
+
 ## Frame timing
 
 - The simulation advances once per presented frame. With the guest vblank
