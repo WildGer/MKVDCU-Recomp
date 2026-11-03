@@ -1,28 +1,17 @@
-#include <cstdint>
 #include <thread>
 
-#if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
-#include <immintrin.h>
-#endif
+#include "short_sleep.h"
 
-namespace {
-void CpuRelax() {
-#if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
-  _mm_pause();
-#endif
-}
-}  // namespace
-
-// ReXGlue mid-asm hook for the command-ring stall path at guest 0x827F6150.
-// The first experiment intentionally avoids real sleeps: spin politely for most
-// retries and hand the scheduler a chance every 64th stalled iteration.
+// ReXGlue mid-asm hook for the command-ring stall path at guest 0x827F6150,
+// called on every retry while the render thread waits for ring space. The
+// guest's own wait (sub_827E1410) only spins, and the ring frees up when the
+// GPU thread gets past its vblank wait, which advances in 1 ms steps, so a
+// stall typically lasts most of a frame. Spin briefly for short stalls, then
+// sleep in 200 us steps instead of burning a core.
 void mkvsdcu_command_ring_backoff() {
-  static thread_local uint32_t stall_count = 0;
-
-  ++stall_count;
-  if ((stall_count & 63u) != 0u) {
-    CpuRelax();
-  } else {
+  if (short_sleep::CountRetry() <= 64) {
+    short_sleep::CpuRelax();
+  } else if (!short_sleep::SleepMicroseconds(200)) {
     std::this_thread::yield();
   }
 }

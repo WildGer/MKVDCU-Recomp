@@ -33,6 +33,7 @@ set(MKVSDCU_SOURCES
     src/port_menu/settings_catalog.cpp
     src/host_tweaks.cpp
     src/command_ring_backoff.cpp
+    src/app_sleep_backoff.cpp
     src/input/controller_filter.cpp
     src/mods/mod_overlay.cpp
     src/mods/menu_quit.cpp
