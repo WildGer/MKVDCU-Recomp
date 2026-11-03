@@ -6,4 +6,5 @@ port_mods = "mods"
 # To disable all mods: port_mods = ""
 # For multiple overlays (first wins): port_mods = "mods/first/files|mods/second/files"
 # The default mods/ folder itself mirrors the original game's directory tree.
+# The main menu's Xbox LIVE entry becomes QUIT at the bottom; to keep it: port_menu_quit = false
 # Leave GPU/audio/input settings at their internal defaults or use F1 in game.

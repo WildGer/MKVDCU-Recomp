@@ -44,6 +44,8 @@ port_mods = "mods"
 
 Use `port_mods = ""` to disable mods, or `port_mods = "mods/first/files|mods/second/files"` for ordered overlays (first wins). CLI and environment options retain precedence over TOML. Existing config repair behavior is retained: an invalid file is backed up as `.invalid` and repaired or set aside.
 
+The main menu's last entry is **QUIT**, which closes the game. It replaces Xbox LIVE, which cannot work on PC. The executable builds patched copies of `Asset/SystemArt.xxx` and `Localization/Coalesced.*` from your game files in `cache/menu-quit/` at startup, and `game/` is never changed. A mod that replaces `SystemArt.xxx` keeps the original menu. Set `port_menu_quit = false` to restore Xbox LIVE.
+
 **F1** (or hold **Back + Start**) opens the main settings menu. **F2** toggles the performance overlay. Settings save to the adjacent TOML, so keep the runtime directory writable. A missing TOML is not created merely to start the game; the menu may create it when saving changes.
 
 Saves use the SDK's existing default, your Windows Documents folder under `mkvsdcu/`; its `cache/` contains shader caches. Logs are generated in `logs/` beside the executable. `user_data_root`, `cache_root`, and `log_file` remain configurable for developers. These generated files are separate from build-time files. The old launcher's selected folders and `launcher.json` are not read or migrated automatically.

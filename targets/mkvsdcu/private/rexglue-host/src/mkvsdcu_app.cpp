@@ -22,6 +22,7 @@
 #include "direct_launch.h"
 #include "host_tweaks.h"
 #include "input/controller_filter.h"
+#include "mods/menu_quit.h"
 #include "mods/mod_overlay.h"
 #include "port_menu/port_config.h"
 #include "port_menu/port_menu.h"
@@ -29,6 +30,8 @@
 #include "telemetry/system_telemetry.h"
 
 REXCVAR_DEFINE_STRING(port_version, "dev", "Port", "Port release shown in the menu");
+REXCVAR_DEFINE_BOOL(port_menu_quit, true, "Port",
+                    "Replace the main menu's Xbox LIVE entry with QUIT at the bottom");
 
 MkvsdcuApp::~MkvsdcuApp() = default;
 
@@ -75,6 +78,8 @@ void MkvsdcuApp::OnConfigurePaths(rex::PathConfig& paths) {
     paths.metadata_root = direct_launch::ResolvePath(executable_dir, paths.metadata_root);
   }
   paths.config_path = executable_dir / "mkvsdcu.toml";
+  game_dir_ = paths.game_data_root;
+  menu_patch_dir_ = paths.cache_root / "menu-quit";
   host_.config_path = paths.config_path;
   host_.log_dir = paths.user_data_root / "logs";
 }
@@ -212,7 +217,24 @@ void MkvsdcuApp::OnPostSetup() {
   });
   host_.sampler = sampler_.get();
   host_.profiler = &profiler_;
-  host_.mods_loaded = mod_overlay::Install(runtime()->file_system(), mod_overlay::EnabledMods());
+  const auto mods = mod_overlay::EnabledMods();
+  host_.mods_loaded = mod_overlay::Install(runtime()->file_system(), mods);
+  if (rex::cvar::Query<bool>("port_menu_quit")) {
+    // Overlaid after the mods; it only holds files no mod replaces.
+    const auto patched = menu_quit::Prepare(game_dir_, menu_patch_dir_, mods);
+    if (!patched.empty() && mod_overlay::Install(runtime()->file_system(), {patched})) {
+      uint8_t* membase = runtime()->memory()->virtual_membase();
+      quit_watch_ = std::thread([this, membase] {
+        while (!stopping_) {
+          Sleep(100);
+          if (menu_quit::TakeRequest(membase)) {
+            app_context().CallInUIThreadDeferred([this] { if (window()) window()->RequestClose(); });
+            return;
+          }
+        }
+      });
+    }
+  }
   host_tweaks::Install();
   if (rex::cvar::Query<bool>("port_perf_csv")) sampler_->SetCsvLogging(true, host_.log_dir);
   if (const int delay = rex::cvar::Query<int32_t>("port_profile_after"); delay > 0) {
@@ -258,6 +280,7 @@ void MkvsdcuApp::OnShutdown() {
   if (d3d_trace_exit_.joinable()) d3d_trace_exit_.join();
 #endif
   if (auto_profile_.joinable()) auto_profile_.join();
+  if (quit_watch_.joinable()) quit_watch_.join();
   rex::ui::UnregisterBind("bind_port_menu");
   rex::ui::UnregisterBind("bind_perf_overlay");
   if (window()) window()->RemoveListener(&cursor_listener_);

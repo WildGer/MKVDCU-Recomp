@@ -35,6 +35,7 @@ set(MKVSDCU_SOURCES
     src/command_ring_backoff.cpp
     src/input/controller_filter.cpp
     src/mods/mod_overlay.cpp
+    src/mods/menu_quit.cpp
     src/telemetry/frame_telemetry.cpp
     src/telemetry/system_telemetry.cpp
     src/telemetry/perf_overlay.cpp

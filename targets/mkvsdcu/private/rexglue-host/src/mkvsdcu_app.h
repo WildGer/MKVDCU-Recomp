@@ -5,6 +5,7 @@
 #pragma once
 
 #include <atomic>
+#include <filesystem>
 #include <memory>
 #include <thread>
 
@@ -64,6 +65,9 @@ class MkvsdcuApp : public rex::ReXApp {
   std::unique_ptr<telemetry::SystemSampler> sampler_;
   telemetry::GuestProfiler profiler_;
   std::thread auto_profile_;
+  std::thread quit_watch_;
+  std::filesystem::path game_dir_;
+  std::filesystem::path menu_patch_dir_;
 #if defined(MKVSDCU_D3D_TRACE_BUILD)
   std::thread d3d_trace_exit_;
 #endif
