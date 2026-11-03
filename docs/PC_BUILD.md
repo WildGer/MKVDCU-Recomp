@@ -73,6 +73,10 @@ Useful launch flags (all settable in `mkvsdcu.toml` too):
 
 `config/mkvsdcu_codegen.toml` keeps CTR, XER, CR and reserved registers in C++ locals, which lets the compiler hold them in registers. `non_argument_as_local` crashes this game at startup and stays off. See the file for details.
 
+## CPU instruction set
+
+The recompiled game builds for `x86-64-v3` (AVX2, FMA, BMI2, LZCNT, MOVBE) by default. The guest's fused multiply-adds then compile to single `vfmadd` instructions instead of library calls, and its big-endian loads and stores fold into `movbe`. `-ffp-contract=off` keeps separate guest multiplies and adds separately rounded, so results match the SSE4.1 build. The executable needs an Intel Haswell or AMD Zen (2013+) CPU and shows an error on older ones. For those, configure with `-DMKVSDCU_CPU_LEVEL=sse4.1`. The SDK DLLs keep their own `x86-64-v2` baseline.
+
 ## Notes
 
 ### Direct-launch architecture audit
