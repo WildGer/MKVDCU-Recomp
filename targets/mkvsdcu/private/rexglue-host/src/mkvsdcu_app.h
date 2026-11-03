@@ -9,6 +9,7 @@
 #include <thread>
 
 #include <rex/rex_app.h>
+#include <rex/ui/window_listener.h>
 
 #include "port_host.h"
 #include "telemetry/guest_profiler.h"
@@ -41,6 +42,19 @@ class MkvsdcuApp : public rex::ReXApp {
   void OnShutdown() override;
 
  private:
+  // Entering or leaving fullscreen resizes the window.
+  class CursorListener : public rex::ui::WindowListener {
+   public:
+    explicit CursorListener(MkvsdcuApp& app) : app_(app) {}
+    void OnResize(rex::ui::UISetupEvent&) override { app_.UpdateCursor(); }
+    void OnGotFocus(rex::ui::UISetupEvent&) override { app_.UpdateCursor(); }
+
+   private:
+    MkvsdcuApp& app_;
+  };
+
+  // Hides the mouse cursor in fullscreen, except while the port menu is open.
+  void UpdateCursor();
   void OpenPortMenu();
   void ShowPerfOverlay(bool visible);
   PortWindowInfo WindowInfo() const;
@@ -57,4 +71,5 @@ class MkvsdcuApp : public rex::ReXApp {
   PortMenuDialog* port_menu_ = nullptr;
   PerfOverlay* perf_overlay_ = nullptr;
   ImFont* port_font_ = nullptr;
+  CursorListener cursor_listener_{*this};
 };

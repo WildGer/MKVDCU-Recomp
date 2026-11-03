@@ -240,6 +240,16 @@ void MkvsdcuApp::OnPostSetup() {
   if (rex::cvar::Query<bool>("port_perf_overlay")) {
     app_context().CallInUIThreadDeferred([this] { ShowPerfOverlay(true); });
   }
+  if (window()) window()->AddListener(&cursor_listener_);
+  UpdateCursor();
+}
+
+void MkvsdcuApp::UpdateCursor() {
+  auto* w = window();
+  if (!w) return;
+  const bool hide = w->IsFullscreen() && port_menu_ == nullptr;
+  w->SetCursorVisibility(hide ? rex::ui::Window::CursorVisibility::kHidden
+                              : rex::ui::Window::CursorVisibility::kVisible);
 }
 
 void MkvsdcuApp::OnShutdown() {
@@ -250,6 +260,7 @@ void MkvsdcuApp::OnShutdown() {
   if (auto_profile_.joinable()) auto_profile_.join();
   rex::ui::UnregisterBind("bind_port_menu");
   rex::ui::UnregisterBind("bind_perf_overlay");
+  if (window()) window()->RemoveListener(&cursor_listener_);
   if (port_menu_) port_menu_->SaveIfDirty();
   delete port_menu_;
   port_menu_ = nullptr;
@@ -262,7 +273,11 @@ void MkvsdcuApp::OnShutdown() {
 
 void MkvsdcuApp::OpenPortMenu() {
   if (port_menu_ || !imgui_drawer()) return;
-  port_menu_ = new PortMenuDialog(imgui_drawer(), &host_, [this]() { port_menu_ = nullptr; });
+  port_menu_ = new PortMenuDialog(imgui_drawer(), &host_, [this]() {
+    port_menu_ = nullptr;
+    UpdateCursor();
+  });
+  UpdateCursor();
 }
 
 void MkvsdcuApp::ShowPerfOverlay(bool visible) {
