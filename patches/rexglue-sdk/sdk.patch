@@ -167,10 +167,10 @@ index afb4a30..893640a 100644
        default:
          return true;
 diff --git a/src/core/threading_win.cpp b/src/core/threading_win.cpp
-index 896dfec..7ae6245 100644
+index 896dfec..b3c0267 100644
 --- a/src/core/threading_win.cpp
 +++ b/src/core/threading_win.cpp
-@@ -93,15 +93,46 @@ void SyncMemory() {
+@@ -93,15 +93,50 @@ void SyncMemory() {
    MemoryBarrier();
  }
  
@@ -180,8 +180,9 @@ index 896dfec..7ae6245 100644
 +
 +// ::Sleep and SleepEx round down to whole milliseconds, so a sub-millisecond
 +// wait became Sleep(0) and a polling guest thread spun on a full core. Wait on
-+// a per-thread high-resolution timer instead. Returns false when it is not
-+// available (Windows 10 before 1803), leaving the caller's fallback in place.
++// a per-thread high-resolution timer instead (any duration, despite the name).
++// Returns false when it is not available (Windows 10 before 1803), leaving the
++// caller's fallback in place.
 +static bool WaitSubMillisecond(std::chrono::microseconds duration, bool alertable,
 +                               DWORD* result) {
 +  thread_local struct Timer {
@@ -199,12 +200,15 @@ index 896dfec..7ae6245 100644
 +  return true;
 +}
 +
++// Host waits such as the vblank and GPU wait loops also need the precise
++// timer at a millisecond or more: ::Sleep(1) lasts 1-2 ms even at 1 ms timer
++// resolution, which delayed every vblank and the GPU work behind it.
  void Sleep(std::chrono::microseconds duration) {
 +  DWORD result;
    if (duration.count() < 100) {
      MaybeYield();
 -  } else {
-+  } else if (duration.count() >= 1000 || !WaitSubMillisecond(duration, false, &result)) {
++  } else if (!WaitSubMillisecond(duration, false, &result)) {
      ::Sleep(static_cast<DWORD>(duration.count() / 1000));
    }
  }
@@ -247,7 +251,7 @@ index 5cfea05..387eafe 100644
    // This is a _sorted_ (ascending due_) list of active timers managed by a
    // dedicated thread
 diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
-index a744375..9cd789c 100644
+index a744375..a083c24 100644
 --- a/src/graphics/command_processor.cpp
 +++ b/src/graphics/command_processor.cpp
 @@ -36,6 +36,10 @@
@@ -357,7 +361,20 @@ index a744375..9cd789c 100644
        // Wait.
        if (wait >= 0x100) {
          PrepareForWait();
-@@ -1052,6 +1111,14 @@ bool CommandProcessor::ExecutePacketType3_WAIT_REG_MEM(memory::RingBuffer* reade
+@@ -1037,7 +1096,11 @@ bool CommandProcessor::ExecutePacketType3_WAIT_REG_MEM(memory::RingBuffer* reade
+           // User wants it fast and dangerous.
+           rex::thread::MaybeYield();
+         } else {
+-          rex::thread::Sleep(std::chrono::milliseconds(wait / 0x100));
++          // Re-check every 250 us instead of sleeping the requested
++          // milliseconds: the guest releases the vblank wait at any moment,
++          // and a full millisecond step delayed the frame's GPU work.
++          rex::thread::Sleep(std::min<std::chrono::microseconds>(
++              std::chrono::milliseconds(wait / 0x100), std::chrono::microseconds(250)));
+         }
+         rex::thread::SyncMemory();
+         ReturnFromWait();
+@@ -1052,6 +1115,14 @@ bool CommandProcessor::ExecutePacketType3_WAIT_REG_MEM(memory::RingBuffer* reade
      }
    } while (!matched);
  
@@ -438,6 +455,24 @@ index 8e6b854..8a1975f 100644
    if (!vertex_shader->is_translated() && !use_async) {
      std::lock_guard<std::mutex> lock(translation_request_lock_);
      if (!vertex_shader->is_translated()) {
+diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
+index 8f2fcb0..e38657b 100644
+--- a/src/graphics/graphics_system.cpp
++++ b/src/graphics/graphics_system.cpp
+@@ -166,7 +166,12 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
+             MarkVblank();
+             last_frame_time += interval_ticks;
+           }
+-          rex::thread::Sleep(std::chrono::milliseconds(1));
++          // Wake at the next vblank rather than up to a millisecond after it,
++          // still at least once a millisecond so setting changes apply.
++          const uint64_t remaining_ticks = interval_ticks - (current_time - last_frame_time);
++          const auto remaining_us = static_cast<int64_t>(double(remaining_ticks) * 1000000.0 /
++                                                         double(guest_tick_frequency));
++          rex::thread::Sleep(std::chrono::microseconds(std::min<int64_t>(remaining_us, 1000)));
+         }
+         return 0;
+       }));
 diff --git a/src/graphics/pipeline/shader/spirv_translator_fetch.cpp b/src/graphics/pipeline/shader/spirv_translator_fetch.cpp
 index 9ce3bb4..28f2170 100644
 --- a/src/graphics/pipeline/shader/spirv_translator_fetch.cpp
